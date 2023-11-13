@@ -14,7 +14,7 @@ PRACTICUM_TOKEN: str = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN: str = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID: str = os.getenv('TELEGRAM_CHAT_ID')
 
-RETRY_PERIOD: int = 600
+RETRY_PERIOD: int = 60
 ENDPOINT: str = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS: dict = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
@@ -116,7 +116,7 @@ def check_response(response: dict) -> bool:
         type_error_msg = 'В ответе API получен неверный тип данных'
         logger.error(type_error_msg)
         raise TypeError(type_error_msg)
-    elif not homework:
+    elif homework is None:
         type_error_msg = 'В ответе отсутствует ожидаемый ключ'
         logger.error(type_error_msg)
         raise UnexpectedResponseError(type_error_msg)
