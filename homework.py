@@ -81,7 +81,6 @@ def send_message(bot: telegram.Bot, message: str) -> None:
 
 def get_api_answer(timestamp: int) -> dict:
     """Делает запрос к эндпойнту."""
-    # payload: dict = {'from_date': timestamp - 914_400 * CHECK_TIME_DAYS}
     payload: dict = {'from_date': timestamp}
     try:
         response: requests.Response = requests.get(
