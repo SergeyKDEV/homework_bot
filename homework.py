@@ -7,8 +7,11 @@ import telegram
 import telegram.ext
 from dotenv import load_dotenv
 
-load_dotenv()
+from custom_exceptions import (ApiAnswerNot200Error, RequestExceptionError,
+                               TokensCheckError, UnexpectedResponseError,
+                               UnexpectedStatusError)
 
+load_dotenv()
 
 PRACTICUM_TOKEN: str = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN: str = os.getenv('TELEGRAM_TOKEN')
@@ -24,47 +27,36 @@ HOMEWORK_VERDICTS: dict = {
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(funcName)s] [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(filename=__file__ + '.log')
+    ]
+)
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-formatter = logging.Formatter(
-    '%(asctime)s [%(levelname)s] %(message)s'
-)
-handler.setFormatter(formatter)
-logger.addHandler(handler)
 
 
-class ApiAnswerNot200Error(Exception):
-    """Код ответа сервера API отличен от 200."""
-
-
-class RequestExceptionError(Exception):
-    """Ошибка запроса к серверу API."""
-
-
-class UnexpectedResponseError(Exception):
-    """Получен неверный формат ответа API."""
-
-
-class UnexpectedStatusError(Exception):
-    """Неожиданный статус домашней работы."""
-
-
-def check_tokens() -> bool:
+def check_tokens() -> None:
     """Проверка переменных окружения."""
-    token_error_msg = "Отсутствует обязательная переменная окружения: '{}'"
+    tokens: tuple = (
+        (PRACTICUM_TOKEN, 'PRACTICUM_TOKEN'),
+        (TELEGRAM_TOKEN, 'TELEGRAM_TOKEN'),
+        (TELEGRAM_CHAT_ID, 'TELEGRAM_CHAT_ID'),
+    )
     flag: bool = True
-    if not PRACTICUM_TOKEN:
-        flag = False
-        logger.critical(token_error_msg.format('PRACTICUM_TOKEN'))
-    elif not TELEGRAM_TOKEN:
-        flag = False
-        logger.critical(token_error_msg.format('TELEGRAM_TOKEN'))
-    elif not TELEGRAM_CHAT_ID:
-        flag = False
-        logger.critical(token_error_msg.format('TELEGRAM_CHAT_ID'))
-    return flag
+
+    for token_value, token_name in tokens:
+        if not token_value:
+            flag = False
+            logger.critical(
+                'Отсутствует обязательная '
+                'переменная окружения: "{}"'.format(token_name)
+            )
+    if not flag:
+        raise TokensCheckError()
 
 
 def send_message(bot: telegram.Bot, message: str) -> None:
@@ -105,7 +97,7 @@ def get_api_answer(timestamp: int) -> dict:
 def check_response(response: dict) -> bool:
     """Выполняет валидацию ответа на соответствие документации."""
     if type(response) is not dict:
-        type_error_msg = "Неожиданный тип данных переменной 'response'"
+        type_error_msg = 'Неожиданный тип данных переменной "response"'
         logger.error(type_error_msg)
         raise TypeError(type_error_msg)
     else:
@@ -128,11 +120,11 @@ def parse_status(homework: dict) -> str:
     homework_name: str = homework.get('homework_name')
     status: str = HOMEWORK_VERDICTS.get(homework.get('status'))
     if not homework_name:
-        parse_status_msg = "В ответе отсутствует ключ 'homework_name'"
+        parse_status_msg = 'В ответе отсутствует ключ "homework_name"'
         logger.error(parse_status_msg)
         raise UnexpectedStatusError(parse_status_msg)
     if not status:
-        parse_status_msg = "В ответе отсутствует ключ 'status'"
+        parse_status_msg = 'В ответе отсутствует ключ "status"'
         logger.error(parse_status_msg)
         raise UnexpectedStatusError(parse_status_msg)
     return f'Изменился статус проверки работы "{homework_name}". {status}'
@@ -142,7 +134,7 @@ def main():
     """Основная логика работы бота."""
     logger.debug('Запуск')
 
-    if not check_tokens():
+    if check_tokens():
         exit()
 
     timestamp: int = int(time.time())
@@ -163,7 +155,7 @@ def main():
                 else:
                     logger.debug('Статус домашней работы не изменился')
         except Exception as error:
-            error_msg = f'Сбой в работе программы: {error}'
+            error_msg = f'Сбой в работе программы: "{error}"'
             logger.error(error_msg)
             if error_msg != last_error:
                 send_message(bot, error_msg)
