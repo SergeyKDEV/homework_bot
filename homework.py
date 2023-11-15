@@ -1,14 +1,16 @@
 import logging
 import os
 import time
+from http import HTTPStatus
 
 import requests
 import telegram
 import telegram.ext
 from dotenv import load_dotenv
 
-from custom_exceptions import (ApiAnswerNot200Error, RequestExceptionError,
-                               TokensCheckError, UnexpectedResponseError,
+from custom_exceptions import (ApiAnswerNot200Error,
+                               TokensCheckError,
+                               UnexpectedResponseError,
                                UnexpectedStatusError)
 
 load_dotenv()
@@ -59,51 +61,70 @@ def check_tokens() -> None:
         raise TokensCheckError()
 
 
-def send_message(bot: telegram.Bot, message: str) -> None:
+def send_message(bot: telegram.Bot, message: str) -> bool:
     """Отправляет сообщение в Telegram чат."""
     try:
+        logger.debug('Попытка отправки сообщения')
         bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
             text=message
         )
-        logger.debug('Сообщение успешно отправлено')
+        logger.debug(f'Сообщение успешно отправлено: {message}')
+        return True
     except telegram.TelegramError as error:
         logger.error(f'Ошибка отправки сообщения: {error}')
+        return False
 
 
 def get_api_answer(timestamp: int) -> dict:
     """Делает запрос к эндпойнту."""
-    payload: dict = {'from_date': timestamp}
+    data: dict = {
+        'url': ENDPOINT,
+        'headers': HEADERS,
+        'payload': {'from_date': timestamp},
+    }
+    logger.debug('''
+    Попытка запроса к API: {}.
+    Заголовок запроса: {}.
+    Параметры запроса: {}'''.format(*data.values())
+                 )
     try:
         response: requests.Response = requests.get(
-            url=ENDPOINT,
-            headers=HEADERS,
-            params=payload)
-        if response.status_code != 200:
-            endpoint_error_msg: str = (f'Сбой в работе программы: '
-                                       f'Эндпоинт {ENDPOINT} недоступен. '
-                                       f'Код ответа API: '
-                                       f'{response.status_code}')
-            logger.error(endpoint_error_msg)
-            raise ApiAnswerNot200Error(endpoint_error_msg)
+            url=data.get('url'),
+            headers=data.get('headers'),
+            params=data.get('payload')
+        )
+        if response.status_code != HTTPStatus.OK:
+            raise ApiAnswerNot200Error('''
+            Ошибка запроса к API:
+            Код ошибки: {}.
+            Попытка запроса к API: {}.
+            Заголовок запроса: {}.
+            Параметры запроса: {}'''.format(
+                response.status_code,
+                *data.values(),
+                )
+            )
         return response.json()
-    except requests.exceptions.RequestException as request_exception:
-        get_api_answer_msg = (f'Ошибка доступа к API '
-                              f'(RequestException): {request_exception}.')
-        logger.error(get_api_answer_msg)
-        raise RequestExceptionError(get_api_answer_msg)
+    except requests.RequestException:
+        raise ConnectionError('''Ошибка доступа к API (RequestException):
+        Попытка запроса к API: {}.
+        Заголовок запроса: {}.
+        Параметры запроса: {}'''.format(*data.values())
+                              )
 
 
 def check_response(response: dict) -> bool:
     """Выполняет валидацию ответа на соответствие документации."""
-    if type(response) is not dict:
+    logger.debug('Начата проверка ответа API')
+    if not isinstance(response, dict):
         type_error_msg = 'Неожиданный тип данных переменной "response"'
         logger.error(type_error_msg)
         raise TypeError(type_error_msg)
     else:
         homework: list = response.get('homeworks')
 
-    if type(homework) is not list:
+    if not isinstance(homework, list):
         type_error_msg = 'В ответе API получен неверный тип данных'
         logger.error(type_error_msg)
         raise TypeError(type_error_msg)
