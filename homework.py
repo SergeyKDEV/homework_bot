@@ -10,8 +10,6 @@ from dotenv import load_dotenv
 
 from custom_exceptions import (ApiAnswerNot200Error,
                                TokensCheckError,
-                               UnexpectedResponseError,
-                               UnexpectedStatusError,
                                EmptyHomeworkError)
 
 load_dotenv()
@@ -79,7 +77,7 @@ def send_message(bot: telegram.Bot, message: str) -> bool:
 
 def get_api_answer(timestamp: int) -> dict:
     """Делает запрос к эндпойнту."""
-    data: dict = {
+    request_data: dict = {
         'url': ENDPOINT,
         'headers': HEADERS,
         'payload': {'from_date': timestamp},
@@ -87,13 +85,13 @@ def get_api_answer(timestamp: int) -> dict:
     logger.debug('''
     Попытка запроса к API: {}.
     Заголовок запроса: {}.
-    Параметры запроса: {}'''.format(*data.values())
+    Параметры запроса: {}'''.format(*request_data.values())
                  )
     try:
         response: requests.Response = requests.get(
-            url=data.get('url'),
-            headers=data.get('headers'),
-            params=data.get('payload')
+            url=request_data.get('url'),
+            headers=request_data.get('headers'),
+            params=request_data.get('payload')
         )
         if response.status_code != HTTPStatus.OK:
             raise ApiAnswerNot200Error('''
@@ -103,7 +101,7 @@ def get_api_answer(timestamp: int) -> dict:
             Заголовок запроса: {}.
             Параметры запроса: {}'''.format(
                 response.status_code,
-                *data.values(),
+                *request_data.values(),
             )
             )
         return response.json()
@@ -111,7 +109,7 @@ def get_api_answer(timestamp: int) -> dict:
         raise ConnectionError('''Ошибка доступа к API (RequestException):
         Попытка запроса к API: {}.
         Заголовок запроса: {}.
-        Параметры запроса: {}'''.format(*data.values())
+        Параметры запроса: {}'''.format(*request_data.values())
                               )
 
 
@@ -143,14 +141,17 @@ def parse_status(homework: dict) -> str:
     """Возвращает статус домашней работы."""
     homework_name: str = homework.get('homework_name')
     status: str = HOMEWORK_VERDICTS.get(homework.get('status'))
-    if not homework_name:
-        parse_status_msg = 'В ответе отсутствует ключ "homework_name"'
+
+    if not all(key in homework for key in ('homework_name', 'status')):
+        parse_status_msg = 'В ответе отсутствуют ожидаемые ключи'
         logger.error(parse_status_msg)
-        raise UnexpectedStatusError(parse_status_msg)
-    if not status:
-        parse_status_msg = 'В ответе отсутствует ключ "status"'
+        raise ValueError(parse_status_msg)
+
+    if status not in HOMEWORK_VERDICTS.values():
+        parse_status_msg = 'Получен неизвестный статус домашней работы'
         logger.error(parse_status_msg)
-        raise UnexpectedStatusError(parse_status_msg)
+        raise ValueError(parse_status_msg)
+
     return f'Изменился статус проверки работы "{homework_name}". {status}'
 
 
