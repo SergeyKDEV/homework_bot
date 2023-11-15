@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 from custom_exceptions import (ApiAnswerNot200Error,
                                TokensCheckError,
                                UnexpectedResponseError,
-                               UnexpectedStatusError)
+                               UnexpectedStatusError,
+                               EmptyHomeworkError)
 
 load_dotenv()
 
@@ -103,7 +104,7 @@ def get_api_answer(timestamp: int) -> dict:
             Параметры запроса: {}'''.format(
                 response.status_code,
                 *data.values(),
-                )
+            )
             )
         return response.json()
     except requests.RequestException:
@@ -114,26 +115,28 @@ def get_api_answer(timestamp: int) -> dict:
                               )
 
 
-def check_response(response: dict) -> bool:
+def check_response(response: dict) -> list:
     """Выполняет валидацию ответа на соответствие документации."""
     logger.debug('Начата проверка ответа API')
+
     if not isinstance(response, dict):
-        type_error_msg = 'Неожиданный тип данных переменной "response"'
+        type_error_msg = 'Неверный тип данных переменной "response"'
         logger.error(type_error_msg)
         raise TypeError(type_error_msg)
-    else:
-        homework: list = response.get('homeworks')
+
+    if 'homeworks' not in response.keys():
+        type_error_msg = 'В ответе API отсутствует ключ "homeworks"'
+        logger.error(type_error_msg)
+        raise EmptyHomeworkError(type_error_msg)
+
+    homework: list = response.get('homeworks')
 
     if not isinstance(homework, list):
         type_error_msg = 'В ответе API получен неверный тип данных'
         logger.error(type_error_msg)
         raise TypeError(type_error_msg)
-    elif homework is None:
-        type_error_msg = 'В ответе отсутствует ожидаемый ключ'
-        logger.error(type_error_msg)
-        raise UnexpectedResponseError(type_error_msg)
-    else:
-        return homework and response.get('current_date')
+
+    return homework
 
 
 def parse_status(homework: dict) -> str:

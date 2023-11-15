@@ -12,3 +12,7 @@ class UnexpectedResponseError(Exception):
 
 class UnexpectedStatusError(Exception):
     """Неожиданный статус домашней работы."""
+
+
+class EmptyHomeworkError(Exception):
+    """В ответе API отсутствует домашняя работа"""
