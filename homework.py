@@ -2,6 +2,7 @@ import logging
 import os
 import time
 from http import HTTPStatus
+from typing import Optional
 
 import requests
 import telegram
@@ -164,7 +165,7 @@ def main() -> None:
     timestamp: int = 0
     last_status: str = ''
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    last_error: Exception = None
+    last_error: Optional[Exception] = None
 
     while True:
         try:
