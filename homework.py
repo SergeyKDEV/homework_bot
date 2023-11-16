@@ -8,9 +8,8 @@ import telegram
 import telegram.ext
 from dotenv import load_dotenv
 
-from custom_exceptions import (ApiAnswerNot200Error,
-                               TokensCheckError,
-                               EmptyHomeworkError)
+from custom_exceptions import (ApiAnswerNot200Error, EmptyHomeworkError,
+                               TokensCheckError)
 
 load_dotenv()
 
@@ -155,36 +154,43 @@ def parse_status(homework: dict) -> str:
     return f'Изменился статус проверки работы "{homework_name}". {status}'
 
 
-def main():
+def main() -> None:
     """Основная логика работы бота."""
     logger.debug('Запуск')
 
-    if check_tokens():
-        exit()
+    check_tokens()
+    logger.debug('Переменные окружения проверены')
 
-    timestamp: int = int(time.time())
+    timestamp: int = 0
     last_status: str = ''
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    last_error: str = ''
+    last_error: Exception = None
 
     while True:
         try:
             response: dict = get_api_answer(timestamp)
-            if check_response(response):
-                last_homework: dict = response.get('homeworks')[0]
-                current_status: str = last_homework.get('status')
-                if last_status != current_status:
-                    message: str = parse_status(last_homework)
-                    send_message(bot, message)
-                    last_status = current_status
-                else:
-                    logger.debug('Статус домашней работы не изменился')
+            homeworks: list = check_response(response)
+            last_homework: dict = homeworks[0]
+            current_status: str = parse_status(last_homework)
+
+            if current_status != last_status:
+                send_message(bot, current_status)
+                last_status = current_status
+                timestamp = response.get('current_date')
+            else:
+                logger.debug('Статус домашней работы не изменился')
+
+        except EmptyHomeworkError as error:
+            logger.error(f'{error}: Пустой ответ API')
+
         except Exception as error:
-            error_msg = f'Сбой в работе программы: "{error}"'
+            current_error: error = error
+            error_msg = f'Сбой в работе программы: "{current_error}"'
             logger.error(error_msg)
-            if error_msg != last_error:
+            if current_error != last_error:
                 send_message(bot, error_msg)
-                last_error = error_msg
+                last_error: error = current_error
+
         finally:
             time.sleep(RETRY_PERIOD)
 
