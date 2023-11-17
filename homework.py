@@ -2,7 +2,6 @@ import logging
 import os
 import time
 from http import HTTPStatus
-from typing import Optional
 
 import requests
 import telegram
@@ -33,7 +32,7 @@ logging.basicConfig(
     format='%(asctime)s [%(funcName)s] [%(levelname)s] %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(filename=__file__ + '.log')
+        logging.FileHandler(filename=__file__ + '.log', encoding='utf-8')
     ]
 )
 
@@ -57,7 +56,7 @@ def check_tokens() -> None:
                 'переменная окружения: "{}"'.format(token_name)
             )
     if not flag:
-        raise TokensCheckError()
+        raise TokensCheckError('Ошибка проверки переменных окружения')
 
 
 def send_message(bot: telegram.Bot, message: str) -> bool:
@@ -82,35 +81,32 @@ def get_api_answer(timestamp: int) -> dict:
         'headers': HEADERS,
         'payload': {'from_date': timestamp},
     }
-    logger.debug('''
-    Попытка запроса к API: {}.
-    Заголовок запроса: {}.
-    Параметры запроса: {}'''.format(*request_data.values())
-                 )
+    logger.debug(
+        'Попытка запроса к API: {url}. '
+        'Заголовок запроса: {headers}. '
+        'Параметры запроса: {payload}'.format(**request_data)
+    )
     try:
-        response: requests.Response = requests.get(
-            url=request_data.get('url'),
-            headers=request_data.get('headers'),
-            params=request_data.get('payload')
-        )
+        response: requests.Response = requests.get(request_data)
         if response.status_code != HTTPStatus.OK:
-            raise ApiAnswerNot200Error('''
-            Ошибка запроса к API:
-            Код ошибки: {}.
-            Попытка запроса к API: {}.
-            Заголовок запроса: {}.
-            Параметры запроса: {}'''.format(
-                response.status_code,
-                *request_data.values(),
-            )
+            raise ApiAnswerNot200Error(
+                'Ошибка запроса к API: '
+                'Код ошибки: {}. '
+                'Попытка запроса к API: {url}. '
+                'Заголовок запроса: {headers}. '
+                'Параметры запроса: {payload}'.format(
+                    response.status_code,
+                    **request_data,
+                )
             )
         return response.json()
     except requests.RequestException:
-        raise ConnectionError('''Ошибка доступа к API (RequestException):
-        Попытка запроса к API: {}.
-        Заголовок запроса: {}.
-        Параметры запроса: {}'''.format(*request_data.values())
-                              )
+        raise ConnectionError(
+            'Ошибка доступа к API (RequestException): '
+            'Попытка запроса к API: {url}. '
+            'Заголовок запроса: {headers}. '
+            'Параметры запроса: {payload}'.format(**request_data)
+        )
 
 
 def check_response(response: dict) -> list:
@@ -118,21 +114,15 @@ def check_response(response: dict) -> list:
     logger.debug('Начата проверка ответа API')
 
     if not isinstance(response, dict):
-        type_error_msg = 'Неверный тип данных переменной "response"'
-        logger.error(type_error_msg)
-        raise TypeError(type_error_msg)
+        raise TypeError('Неверный тип данных переменной "response"')
 
     if 'homeworks' not in response.keys():
-        type_error_msg = 'В ответе API отсутствует ключ "homeworks"'
-        logger.error(type_error_msg)
-        raise EmptyHomeworkError(type_error_msg)
+        raise EmptyHomeworkError('В ответе API отсутствует ключ "homeworks"')
 
     homework: list = response.get('homeworks')
 
     if not isinstance(homework, list):
-        type_error_msg = 'В ответе API получен неверный тип данных'
-        logger.error(type_error_msg)
-        raise TypeError(type_error_msg)
+        raise TypeError('В ответе API получен неверный тип данных')
 
     return homework
 
@@ -143,14 +133,10 @@ def parse_status(homework: dict) -> str:
     status: str = HOMEWORK_VERDICTS.get(homework.get('status'))
 
     if not all(key in homework for key in ('homework_name', 'status')):
-        parse_status_msg = 'В ответе отсутствуют ожидаемые ключи'
-        logger.error(parse_status_msg)
-        raise ValueError(parse_status_msg)
+        raise ValueError('В ответе отсутствуют ожидаемые ключи')
 
     if status not in HOMEWORK_VERDICTS.values():
-        parse_status_msg = 'Получен неизвестный статус домашней работы'
-        logger.error(parse_status_msg)
-        raise ValueError(parse_status_msg)
+        raise ValueError('Получен неизвестный статус домашней работы')
 
     return f'Изменился статус проверки работы "{homework_name}". {status}'
 
@@ -165,7 +151,6 @@ def main() -> None:
     timestamp: int = 0
     last_status: str = ''
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    last_error: Optional[Exception] = None
 
     while True:
         try:
@@ -175,26 +160,23 @@ def main() -> None:
             if homeworks:
                 last_homework: dict = homeworks[0]
                 current_status: str = parse_status(last_homework)
-            else:
-                current_status: str = last_status
 
             if current_status != last_status:
-                send_message(bot, current_status)
-                last_status = current_status
-                timestamp = response.get('current_date')
+                if send_message(bot, current_status):
+                    last_status = current_status
+                    timestamp = response.get('current_date', 0)
             else:
-                logger.debug('Статус домашней работы не изменился')
+                logger.debug(f'Статус домашней работы: {current_status}')
 
         except EmptyHomeworkError as error:
             logger.error(f'{error}: Пустой ответ API')
 
         except Exception as error:
-            current_error: error = error
-            error_msg = f'Сбой в работе программы: "{current_error}"'
-            logger.error(error_msg)
-            if current_error != last_error:
-                send_message(bot, error_msg)
-                last_error: error = current_error
+            current_status = f'Сбой в работе программы: "{error}"'
+            logger.error(current_status, exc_info=True)
+            if current_status != last_status:
+                send_message(bot, current_status)
+                last_status = current_status
 
         finally:
             time.sleep(RETRY_PERIOD)
