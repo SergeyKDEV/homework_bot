@@ -160,11 +160,13 @@ def main() -> None:
             if homeworks:
                 last_homework: dict = homeworks[0]
                 current_status: str = parse_status(last_homework)
+            else:
+                current_status = 'Статус домашней работы не изменился'
 
             if current_status != last_status:
                 if send_message(bot, current_status):
                     last_status = current_status
-                    timestamp = response.get('current_date', 0)
+                    timestamp = response.get('current_date', timestamp)
             else:
                 logger.debug(f'Статус домашней работы: {current_status}')
 
