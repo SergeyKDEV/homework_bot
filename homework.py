@@ -79,24 +79,24 @@ def get_api_answer(timestamp: int) -> dict:
     request_data: dict = {
         'url': ENDPOINT,
         'headers': HEADERS,
-        'payload': {'from_date': timestamp},
+        'params': {'from_date': timestamp},
     }
     logger.debug(
         'Попытка запроса к API: {url}. '
         'Заголовок запроса: {headers}. '
-        'Параметры запроса: {payload}'.format(**request_data)
+        'Параметры запроса: {params}'.format(**request_data)
     )
     try:
-        response: requests.Response = requests.get(request_data)
+        response: requests.Response = requests.get(**request_data)
         if response.status_code != HTTPStatus.OK:
             raise ApiAnswerNot200Error(
                 'Ошибка запроса к API: '
                 'Код ошибки: {}. '
-                'Попытка запроса к API: {url}. '
-                'Заголовок запроса: {headers}. '
-                'Параметры запроса: {payload}'.format(
+                'Причина: {}. '
+                'Текст ответа: {}'.format(
                     response.status_code,
-                    **request_data,
+                    response.reason,
+                    response.text,
                 )
             )
         return response.json()
@@ -105,7 +105,7 @@ def get_api_answer(timestamp: int) -> dict:
             'Ошибка доступа к API (RequestException): '
             'Попытка запроса к API: {url}. '
             'Заголовок запроса: {headers}. '
-            'Параметры запроса: {payload}'.format(**request_data)
+            'Параметры запроса: {params}'.format(**request_data)
         )
 
 
